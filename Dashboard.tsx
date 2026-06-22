@@ -310,10 +310,13 @@ export default function Dashboard() {
       <style>{styles}</style>
 
       <header className="topbar">
-        <button className="brand" onClick={() => setMenuOpen((current) => !current)}>
+        <button
+          className="brand logoOnly"
+          aria-label="Open navigation menu"
+          title="Open navigation menu"
+          onClick={() => setMenuOpen((current) => !current)}
+        >
           <span className="logo">⌁</span>
-          <span>VCC_OS</span>
-          <span className="caret">{menuOpen ? "⌃" : "⌄"}</span>
         </button>
 
         {menuOpen && (
@@ -1286,6 +1289,11 @@ input {
   font-weight: 900;
   letter-spacing: 8px;
   cursor: pointer;
+}
+
+.logoOnly {
+  gap: 0;
+  letter-spacing: 0;
 }
 
 .logo {
