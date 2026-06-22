@@ -644,12 +644,19 @@ function SpreadsheetGrid({
                   <input
                     className="spreadsheetInput"
                     value={row[column] ?? ""}
+                    inputMode={isCurrencyColumn(column) ? "decimal" : undefined}
                     onChange={(event) => updateCell(section.key, rowIndex, column, event.target.value)}
+                    onBlur={(event) => {
+                      if (isCurrencyColumn(column)) {
+                        updateCell(section.key, rowIndex, column, formatCurrencyCellValue(event.target.value));
+                      }
+                    }}
                     onKeyDown={(event) => handleCellKeyDown(event, rowIndex, columnIndex)}
                     data-section={section.key}
                     data-row={rowIndex}
                     data-column={column}
                     data-column-index={columnIndex}
+                    data-cell-kind={isCurrencyColumn(column) ? "currency" : "text"}
                     aria-label={`${section.label} row ${rowIndex + 1} ${column}`}
                   />
                 </td>
@@ -1176,6 +1183,42 @@ function labelFor(key: SectionKey) {
   };
 
   return labels[key];
+}
+
+
+const CURRENCY_COLUMNS = new Set([
+  "Amount",
+  "Expected",
+  "Received",
+  "Current Balance",
+  "Payment Due",
+  "Target Amount",
+  "Current Amount",
+  "Allowed Withdrawal",
+]);
+
+function isCurrencyColumn(column: string) {
+  return CURRENCY_COLUMNS.has(column);
+}
+
+function formatCurrencyCellValue(value: string) {
+  const trimmed = value.trim();
+  if (!trimmed) return "";
+
+  const cleaned = trimmed.replace(/[$,\s]/g, "");
+  if (!cleaned || cleaned === "-" || cleaned === "." || cleaned === "-.") return trimmed;
+
+  const parsed = Number(cleaned);
+  if (!Number.isFinite(parsed)) return trimmed;
+
+  const absoluteValue = Math.abs(parsed);
+  const hasCents = Math.round(absoluteValue * 100) % 100 !== 0;
+  const formatted = absoluteValue.toLocaleString("en-US", {
+    minimumFractionDigits: hasCents ? 2 : 0,
+    maximumFractionDigits: 2,
+  });
+
+  return `${parsed < 0 ? "-" : ""}$${formatted}`;
 }
 
 function focusSpreadsheetCell(sectionKey: SectionKey, rowIndex: number, columnIndex: number) {
