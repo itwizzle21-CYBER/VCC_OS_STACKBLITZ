@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { type KeyboardEvent, useEffect, useMemo, useState } from "react";
 
 type SectionKey =
   | "money"
@@ -575,36 +575,93 @@ function SectionPage({
         <button className="primary" onClick={() => addRow(section.key)}>+ ADD ROW</button>
       </div>
 
-      <div className="tableWrap">
-        <table>
-          <thead>
-            <tr>
-              {section.columns.map((column) => <th key={column}>{column}</th>)}
-              <th>Action</th>
-            </tr>
-          </thead>
-
-          <tbody>
-            {section.rows.map((row, rowIndex) => (
-              <tr key={`${section.key}-${rowIndex}`}>
-                {section.columns.map((column) => (
-                  <td key={column}>
-                    <input
-                      value={row[column] ?? ""}
-                      onChange={(event) => updateCell(section.key, rowIndex, column, event.target.value)}
-                      placeholder="-"
-                    />
-                  </td>
-                ))}
-                <td>
-                  <button className="delete" onClick={() => deleteRow(section.key, rowIndex)}>DELETE</button>
-                </td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      </div>
+      <SpreadsheetGrid section={section} updateCell={updateCell} deleteRow={deleteRow} />
     </section>
+  );
+}
+
+function SpreadsheetGrid({
+  section,
+  updateCell,
+  deleteRow,
+}: {
+  section: Section;
+  updateCell: (sectionKey: SectionKey, rowIndex: number, column: string, value: string) => void;
+  deleteRow: (sectionKey: SectionKey, rowIndex: number) => void;
+}) {
+  function handleCellKeyDown(
+    event: KeyboardEvent<HTMLInputElement>,
+    rowIndex: number,
+    columnIndex: number
+  ) {
+    let nextRow = rowIndex;
+    let nextColumn = columnIndex;
+
+    if (event.key === "Enter") {
+      nextRow = event.shiftKey ? rowIndex - 1 : rowIndex + 1;
+    } else if (event.key === "ArrowRight") {
+      nextColumn = columnIndex + 1;
+    } else if (event.key === "ArrowLeft") {
+      nextColumn = columnIndex - 1;
+    } else if (event.key === "ArrowDown") {
+      nextRow = rowIndex + 1;
+    } else if (event.key === "ArrowUp") {
+      nextRow = rowIndex - 1;
+    } else {
+      return;
+    }
+
+    event.preventDefault();
+    focusSpreadsheetCell(section.key, nextRow, nextColumn);
+  }
+
+  return (
+    <div className="tableWrap spreadsheetWrap">
+      <table className="spreadsheetGrid" aria-label={`${section.label} spreadsheet`}>
+        <thead>
+          <tr>
+            {section.columns.map((column) => <th key={column}>{column}</th>)}
+            <th className="actionHead">Action</th>
+          </tr>
+        </thead>
+
+        <tbody>
+          {section.rows.map((row, rowIndex) => (
+            <tr key={`${section.key}-${rowIndex}`}>
+              {section.columns.map((column, columnIndex) => (
+                <td
+                  key={column}
+                  className="spreadsheetCell"
+                  onMouseDown={(event) => {
+                    const input = event.currentTarget.querySelector("input");
+                    if (input && event.target !== input) {
+                      event.preventDefault();
+                      input.focus();
+                      input.select();
+                    }
+                  }}
+                >
+                  <input
+                    className="spreadsheetInput"
+                    value={row[column] ?? ""}
+                    onChange={(event) => updateCell(section.key, rowIndex, column, event.target.value)}
+                    onKeyDown={(event) => handleCellKeyDown(event, rowIndex, columnIndex)}
+                    data-section={section.key}
+                    data-row={rowIndex}
+                    data-column={column}
+                    data-column-index={columnIndex}
+                    aria-label={`${section.label} row ${rowIndex + 1} ${column}`}
+                  />
+                </td>
+              ))}
+              <td className="rowActionCell">
+                <button className="delete" onClick={() => deleteRow(section.key, rowIndex)}>DELETE</button>
+              </td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
   );
 }
 
@@ -1119,6 +1176,22 @@ function labelFor(key: SectionKey) {
   };
 
   return labels[key];
+}
+
+function focusSpreadsheetCell(sectionKey: SectionKey, rowIndex: number, columnIndex: number) {
+  if (rowIndex < 0 || columnIndex < 0) return;
+
+  const cells = Array.from(
+    document.querySelectorAll<HTMLInputElement>(`input[data-section="${sectionKey}"]`)
+  );
+  const nextCell = cells.find(
+    (cell) => cell.dataset.row === String(rowIndex) && cell.dataset.columnIndex === String(columnIndex)
+  );
+
+  if (!nextCell) return;
+
+  nextCell.focus();
+  nextCell.select();
 }
 
 const styles = `
@@ -2058,6 +2131,135 @@ th {
 .menu {
   background: rgba(7, 17, 31, 0.99);
   border-color: rgba(96, 165, 250, 0.42);
+}
+
+/* ===== STYLED SPREADSHEET ENGINE V1 ===== */
+
+.spreadsheetWrap {
+  padding: 0;
+  overflow-x: auto;
+  overflow-y: hidden;
+  border-radius: 18px;
+  background: #07111f;
+}
+
+.spreadsheetGrid {
+  min-width: 980px;
+  width: 100%;
+  table-layout: fixed;
+  border-collapse: separate;
+  border-spacing: 0;
+  background: #07111f;
+}
+
+.spreadsheetGrid th {
+  position: sticky;
+  top: 0;
+  z-index: 1;
+  height: 40px;
+  padding: 10px 12px;
+  color: #93c5fd;
+  background: #0b1729;
+  border-right: 1px solid rgba(148, 163, 184, 0.18);
+  border-bottom: 1px solid rgba(96, 165, 250, 0.32);
+  font-size: 11px;
+  line-height: 1.2;
+  text-transform: uppercase;
+  letter-spacing: 2px;
+  white-space: nowrap;
+}
+
+.spreadsheetGrid th:last-child,
+.spreadsheetGrid td:last-child {
+  border-right: 0;
+}
+
+.spreadsheetCell,
+.rowActionCell {
+  height: 42px;
+  padding: 0;
+  background: rgba(7, 17, 31, 0.96);
+  border-right: 1px solid rgba(148, 163, 184, 0.16);
+  border-bottom: 1px solid rgba(148, 163, 184, 0.14);
+  vertical-align: middle;
+}
+
+.spreadsheetGrid tr:nth-child(even) .spreadsheetCell,
+.spreadsheetGrid tr:nth-child(even) .rowActionCell {
+  background: rgba(10, 24, 42, 0.96);
+}
+
+.spreadsheetCell:focus-within {
+  background: rgba(15, 33, 59, 0.98);
+  box-shadow: inset 0 0 0 2px rgba(96, 165, 250, 0.86);
+}
+
+.spreadsheetInput {
+  display: block;
+  width: 100%;
+  height: 42px;
+  min-width: 0;
+  padding: 0 11px;
+  color: #f8fafc;
+  background: transparent;
+  border: 0;
+  border-radius: 0;
+  outline: none;
+  box-shadow: none;
+  line-height: 42px;
+}
+
+.spreadsheetInput:focus {
+  border: 0;
+  box-shadow: none;
+}
+
+.rowActionCell {
+  width: 112px;
+  padding: 5px;
+  text-align: center;
+}
+
+.actionHead {
+  width: 112px;
+}
+
+.rowActionCell .delete {
+  width: 100%;
+  height: 31px;
+  padding: 0 10px;
+  border-radius: 9px;
+  font-size: 11px;
+  letter-spacing: 1px;
+}
+
+@media (max-width: 760px) {
+  .spreadsheetWrap {
+    margin-left: -2px;
+    margin-right: -2px;
+    -webkit-overflow-scrolling: touch;
+  }
+
+  .spreadsheetGrid {
+    min-width: 920px;
+  }
+
+  .spreadsheetGrid th {
+    height: 38px;
+    padding: 9px 10px;
+    font-size: 10px;
+  }
+
+  .spreadsheetCell,
+  .rowActionCell,
+  .spreadsheetInput {
+    height: 40px;
+  }
+
+  .spreadsheetInput {
+    padding: 0 10px;
+    line-height: 40px;
+  }
 }
 
 `;
