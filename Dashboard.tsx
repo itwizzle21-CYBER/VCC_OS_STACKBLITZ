@@ -12,6 +12,8 @@ type SectionKey =
   | "missions"
   | "alerts";
 
+type AppView = SectionKey | "dashboard" | "settings";
+
 type Row = Record<string, string>;
 
 type Section = {
@@ -219,7 +221,7 @@ const defaultSections: Section[] = [
 ];
 
 export default function Dashboard() {
-  const [view, setView] = useState<SectionKey | "dashboard">("dashboard");
+  const [view, setView] = useState<AppView>("dashboard");
   const [menuOpen, setMenuOpen] = useState(false);
   const [sections, setSections] = useState<Section[]>(() => loadSections());
 
@@ -232,7 +234,7 @@ export default function Dashboard() {
   const recommendedMove = useMemo(() => getRecommendedMove(metrics, alerts), [metrics, alerts]);
   const activeSection = sections.find((section) => section.key === view);
 
-  function open(nextView: SectionKey | "dashboard") {
+  function open(nextView: AppView) {
     setView(nextView);
     setMenuOpen(false);
     window.scrollTo({ top: 0, behavior: "smooth" });
@@ -297,8 +299,9 @@ export default function Dashboard() {
   }
 
   function resetAllData() {
-    const confirmed = window.confirm("Reset all VCC data to starter setup?");
-    if (!confirmed) return;
+    const confirmedText = window.prompt("Type RESET to erase all VCC data and restore the starter setup.");
+    if (confirmedText !== "RESET") return;
+
     localStorage.removeItem(STORAGE_KEY);
     setSections(structuredClone(defaultSections));
     setView("dashboard");
@@ -335,8 +338,8 @@ export default function Dashboard() {
               </button>
             ))}
 
-            <button className="resetData" onClick={resetAllData}>
-              Reset All Data
+            <button className={view === "settings" ? "active" : ""} onClick={() => open("settings")}>
+              Settings
             </button>
           </nav>
         )}
@@ -350,6 +353,10 @@ export default function Dashboard() {
           recommendedMove={recommendedMove}
           open={open}
         />
+      )}
+
+      {view === "settings" && (
+        <SettingsPage resetAllData={resetAllData} back={() => open("dashboard")} />
       )}
 
       {activeSection?.key === "alerts" && (
@@ -381,7 +388,7 @@ function DashboardHome({
   metrics: Metrics;
   alerts: Alert[];
   recommendedMove: RecommendedMove;
-  open: (view: SectionKey | "dashboard") => void;
+  open: (view: AppView) => void;
 }) {
   const topAlert = alerts[0];
 
@@ -461,7 +468,7 @@ function RecommendedMovePanel({
   open,
 }: {
   move: RecommendedMove;
-  open: (view: SectionKey | "dashboard") => void;
+  open: (view: AppView) => void;
 }) {
   return (
     <button className={`movePanel ${move.tone}`} onClick={() => open(move.source)}>
@@ -508,7 +515,7 @@ function ProofCard({
   label: string;
   value: string;
   source: SectionKey;
-  open: (view: SectionKey | "dashboard") => void;
+  open: (view: AppView) => void;
   danger?: boolean;
 }) {
   return (
@@ -526,7 +533,7 @@ function AlertsPage({
   back,
 }: {
   alerts: Alert[];
-  open: (view: SectionKey | "dashboard") => void;
+  open: (view: AppView) => void;
   back: () => void;
 }) {
   return (
@@ -550,6 +557,80 @@ function AlertsPage({
           ))}
         </div>
       )}
+    </section>
+  );
+}
+
+function SettingsPage({
+  resetAllData,
+  back,
+}: {
+  resetAllData: () => void;
+  back: () => void;
+}) {
+  const settingsCards = [
+    {
+      title: "Accounts",
+      status: "Foundation ready",
+      detail: "Future home for user profiles, account switching, connected money sources, and account-level controls.",
+    },
+    {
+      title: "Login",
+      status: "Planned",
+      detail: "Future authentication. No login is active yet, so VCC stays fast and local for now.",
+    },
+    {
+      title: "Theme Customization",
+      status: "Planned",
+      detail: "Future controls for colors, contrast, card styles, glow strength, and command-center themes.",
+    },
+    {
+      title: "Layout / Style Modes",
+      status: "Planned",
+      detail: "Future layout options like compact, full dashboard, mobile-first, and spreadsheet-heavy modes.",
+    },
+    {
+      title: "QR Codes",
+      status: "Planned",
+      detail: "Future QR codes for quick access, onboarding, and sharing VCC with new users.",
+    },
+    {
+      title: "Quick Access",
+      status: "Planned",
+      detail: "Future shortcuts for the most-used pages, emergency actions, and daily update flows.",
+    },
+  ];
+
+  return (
+    <section className="content">
+      <PageHeader
+        title="Settings"
+        subtitle="Control center for accounts, login, themes, layouts, QR codes, quick access, and dangerous reset actions."
+        back={back}
+      />
+
+      <div className="settingsGrid">
+        {settingsCards.map((card) => (
+          <div key={card.title} className="settingsCard">
+            <p>{card.status}</p>
+            <h2>{card.title}</h2>
+            <span>{card.detail}</span>
+          </div>
+        ))}
+      </div>
+
+      <div className="dangerZone">
+        <p className="kicker">DANGER_ZONE</p>
+        <h2>Reset All Data</h2>
+        <p>
+          This erases saved VCC data from this browser and restores the starter setup.
+          It now lives inside Settings instead of the main dropdown so it is harder to hit by accident.
+        </p>
+        <button className="dangerButton" onClick={resetAllData}>
+          RESET ALL DATA
+        </button>
+        <small>Protection: you must type RESET exactly before anything is erased.</small>
+      </div>
     </section>
   );
 }
@@ -1763,6 +1844,64 @@ td input:focus {
   padding: 24px;
 }
 
+
+.settingsGrid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 14px;
+  margin-bottom: 18px;
+}
+
+.settingsCard,
+.dangerZone {
+  border: 1px solid rgba(96, 165, 250, 0.28);
+  background: linear-gradient(180deg, rgba(15, 23, 42, 0.94), rgba(2, 6, 23, 0.95));
+  border-radius: 22px;
+  padding: 20px;
+  box-shadow: 0 24px 70px rgba(0, 0, 0, 0.22);
+}
+
+.settingsCard p {
+  margin: 0 0 12px;
+  color: #60a5fa;
+  text-transform: uppercase;
+  letter-spacing: 3px;
+  font-size: 11px;
+  font-weight: 900;
+}
+
+.settingsCard h2,
+.dangerZone h2 {
+  margin: 0 0 12px;
+  color: #f8fafc;
+  font-size: 24px;
+}
+
+.settingsCard span,
+.dangerZone p,
+.dangerZone small {
+  color: #cbd5e1;
+  line-height: 1.5;
+}
+
+.dangerZone {
+  border-color: rgba(251, 113, 133, 0.5);
+  background: linear-gradient(180deg, rgba(100, 28, 45, 0.32), rgba(19, 27, 48, 0.94));
+}
+
+.dangerButton {
+  margin: 12px 0;
+  width: 100%;
+  border-radius: 15px;
+  padding: 14px 18px;
+  cursor: pointer;
+  font-weight: 900;
+  letter-spacing: 2px;
+  color: #fecdd3;
+  background: rgba(127, 29, 29, 0.45);
+  border: 1px solid rgba(251, 113, 133, 0.65);
+}
+
 @media (max-width: 1200px) {
   .proof {
     grid-template-columns: repeat(3, minmax(0, 1fr));
@@ -1807,7 +1946,8 @@ td input:focus {
   .moveGrid,
   .proof,
   .cards,
-  .alertGrid {
+  .alertGrid,
+  .settingsGrid {
     grid-template-columns: 1fr;
   }
 
