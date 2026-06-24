@@ -737,7 +737,18 @@ function SpreadsheetGrid({
                         updateCell(section.key, rowIndex, column, formatCurrencyCellValue(event.target.value));
                       }
                     }}
-                    onKeyDown={(event) => handleCellKeyDown(event, rowIndex, columnIndex)}
+                    onKeyDown={(event) => {
+                      if (event.key === "Enter" && isCurrencyColumn(column)) {
+                        updateCell(
+                          section.key,
+                          rowIndex,
+                          column,
+                          formatCurrencyCellValue(event.currentTarget.value)
+                        );
+                      }
+
+                      handleCellKeyDown(event, rowIndex, columnIndex);
+                    }}
                     data-section={section.key}
                     data-row={rowIndex}
                     data-column={column}
