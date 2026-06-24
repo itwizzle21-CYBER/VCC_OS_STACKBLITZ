@@ -98,13 +98,13 @@ const defaultSections: Section[] = [
     key: "income",
     label: "Income",
     subtitle: "Track money that actually came in. Cash position will be handled separately inside this page.",
-    columns: ["Source", "Income Type", "Date Received", "Amount", "Status", "Notes"],
+    columns: ["Source", "Income Type", "Date Received", "Amount", "Notes"],
     rows: [
-      { Source: "", "Income Type": "", "Date Received": "", Amount: "", Status: "", Notes: "" },
-      { Source: "", "Income Type": "", "Date Received": "", Amount: "", Status: "", Notes: "" },
-      { Source: "", "Income Type": "", "Date Received": "", Amount: "", Status: "", Notes: "" },
-      { Source: "", "Income Type": "", "Date Received": "", Amount: "", Status: "", Notes: "" },
-      { Source: "", "Income Type": "", "Date Received": "", Amount: "", Status: "", Notes: "" },
+      { Source: "", "Income Type": "", "Date Received": "", Amount: "", Notes: "" },
+      { Source: "", "Income Type": "", "Date Received": "", Amount: "", Notes: "" },
+      { Source: "", "Income Type": "", "Date Received": "", Amount: "", Notes: "" },
+      { Source: "", "Income Type": "", "Date Received": "", Amount: "", Notes: "" },
+      { Source: "", "Income Type": "", "Date Received": "", Amount: "", Notes: "" },
     ],
   },  {
     key: "transactions",
@@ -728,6 +728,7 @@ function SpreadsheetGrid({
                 >
                   <input
                     className="spreadsheetInput"
+                    type={section.key === "income" && column === "Date Received" ? "date" : "text"}
                     value={row[column] ?? ""}
                     inputMode={isCurrencyColumn(column) ? "decimal" : undefined}
                     onChange={(event) => updateCell(section.key, rowIndex, column, event.target.value)}
