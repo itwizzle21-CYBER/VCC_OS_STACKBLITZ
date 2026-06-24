@@ -94,18 +94,78 @@ const defaultSections: Section[] = [
       { Bill: "Insurance", "Due Date": "", Amount: "", Status: "Unpaid", Priority: "High", Notes: "" },
     ],
   },
-  {
+ {
     key: "income",
     label: "Income",
-    subtitle: "Paychecks, payouts, side money, and expected money.",
-    columns: ["Source", "Expected", "Received", "Date", "Status", "Notes"],
+    subtitle: "Only money actually received counts. Use this page to track weekly and extra income.",
+    columns: ["Source", "Income Type", "Date Received", "Received", "Status", "Notes"],
     rows: [
-      { Source: "Job check", Expected: "", Received: "", Date: "", Status: "Expected", Notes: "" },
-      { Source: "Trading payout", Expected: "", Received: "", Date: "", Status: "Pending", Notes: "" },
-      { Source: "Other income", Expected: "", Received: "", Date: "", Status: "Pending", Notes: "" },
+      {
+        Source: "Main Paycheck",
+        "Income Type": "Weekly Income",
+        "Date Received": "",
+        Received: "",
+        Status: "Pending",
+        Notes: "Main weekly income. Count only when actually received.",
+      },
+      {
+        Source: "Side Hustle",
+        "Income Type": "Weekly Income",
+        "Date Received": "",
+        Received: "",
+        Status: "Pending",
+        Notes: "Extra weekly income only after received.",
+      },
+      {
+        Source: "Trading Payout",
+        "Income Type": "Other Income",
+        "Date Received": "",
+        Received: "",
+        Status: "Pending",
+        Notes: "Only count after payout is actually received.",
+      },
+      {
+        Source: "Donation / Help",
+        "Income Type": "Other Income",
+        "Date Received": "",
+        Received: "",
+        Status: "Pending",
+        Notes: "Gift or help money.",
+      },
+      {
+        Source: "Borrowed Money",
+        "Income Type": "Borrowed Income",
+        "Date Received": "",
+        Received: "",
+        Status: "Pending",
+        Notes: "Cash received now. Track repayment in Debt.",
+      },
+      {
+        Source: "MyPay",
+        "Income Type": "Borrowed Income",
+        "Date Received": "",
+        Received: "",
+        Status: "Pending",
+        Notes: "Advance or borrowed money. Track repayment in Debt.",
+      },
+      {
+        Source: "SpotMe",
+        "Income Type": "Borrowed Income",
+        "Date Received": "",
+        Received: "",
+        Status: "Pending",
+        Notes: "Cash cushion. Track repayment in Debt.",
+      },
+      {
+        Source: "Cash App Borrow",
+        "Income Type": "Borrowed Income",
+        "Date Received": "",
+        Received: "",
+        Status: "Pending",
+        Notes: "Borrowed cash. Track repayment in Debt.",
+      },
     ],
-  },
-  {
+  },  {
     key: "transactions",
     label: "Transactions",
     subtitle: "Deposits, spending, leaks, and money movement.",
@@ -779,12 +839,16 @@ function getMetrics(sections: Section[]): Metrics {
   const missionsSection = getSection(sections, "missions");
 
   const cashOnHand = moneyAmount(moneySection, "Cash On Hand");
-  const weeklyIncome = moneyAmount(moneySection, "Weekly Income");
+  const weeklyIncome = 0;
   const otherIncome = moneyAmount(moneySection, "Other Income");
   const foodNeeded = moneyAmount(moneySection, "Food Needed");
   const gasNeeded = moneyAmount(moneySection, "Gas Needed");
 
-  const receivedIncome = incomeSection.rows.reduce((sum, row) => sum + number(row.Received), 0);
+  const receivedIncome = incomeSection.rows.reduce((sum, row) => {
+    const status = (row.Status ?? "").toLowerCase();
+    if (["cancelled", "canceled", "void", "not received"].includes(status)) return sum;
+    return sum + number(row.Received);
+  }, 0);
 
   const transactionNet = transactionsSection.rows.reduce((sum, row) => {
     const amount = number(row.Amount);
