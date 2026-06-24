@@ -886,55 +886,10 @@ function getAlerts(metrics: Metrics, sections: Section[]): Alert[] {
   const inventory = getSection(sections, "inventory");
   const goals = getSection(sections, "goals");
 
-  if (metrics.cashOnHand === 0 && metrics.weeklyIncome === 0 && metrics.otherIncome === 0) {
-    alerts.push({
-      title: "Money Snapshot is missing core numbers",
-      source: "money",
-      level: "Critical",
-      proof: "Cash On Hand, Weekly Income, and Other Income are blank or zero.",
-      action: "Enter real operating cash first so VCC can judge the situation.",
-    });
-  }
-
-  if (metrics.spendableCash < 0) {
-    alerts.push({
-      title: "Operating cash is short",
-      source: "money",
-      level: "Critical",
-      proof: `Spendable Cash is ${money(metrics.spendableCash)}. Savings is not counted as spendable.`,
-      action: "Reduce pressure, increase income, or decide what must wait before touching savings.",
-    });
-  }
-
-  if (metrics.totalPressure > metrics.operatingCash && metrics.totalPressure > 0) {
-    alerts.push({
-      title: "Pressure is higher than operating cash",
-      source: "money",
-      level: "Critical",
-      proof: `Pressure is ${money(metrics.totalPressure)} and operating cash is ${money(metrics.operatingCash)}.`,
-      action: "Prioritize food, gas, car, phone, and anything that prevents worse damage.",
-    });
-  }
-
-  if (metrics.spendableCash < 0 && metrics.protectedSavings > 0 && metrics.allowedWithdrawal <= 0) {
-    alerts.push({
-      title: "Savings exists but is protected",
-      source: "savings",
-      level: "High",
-      proof: `Protected Savings is ${money(metrics.protectedSavings)}, but Allowed Withdrawal is ${money(metrics.allowedWithdrawal)}.`,
-      action: "Do not pull from savings unless the Savings page approves the reason.",
-    });
-  }
-
-  if (metrics.allowedWithdrawal > 0) {
-    alerts.push({
-      title: "Savings withdrawal is approved",
-      source: "savings",
-      level: "Medium",
-      proof: `Allowed Withdrawal is ${money(metrics.allowedWithdrawal)}.`,
-      action: "Only use the approved amount for the listed reason.",
-    });
-  }
+  const cashConfidenceIncomplete =
+    metrics.cashOnHand === 0 &&
+    metrics.weeklyIncome === 0 &&
+    metrics.otherIncome === 0;
 
   if (metrics.overdueBills > 0) {
     alerts.push({
@@ -1010,11 +965,11 @@ function getAlerts(metrics: Metrics, sections: Section[]): Alert[] {
 function getRecommendedMove(metrics: Metrics, alerts: Alert[]): RecommendedMove {
   if (metrics.cashOnHand === 0 && metrics.weeklyIncome === 0 && metrics.otherIncome === 0) {
     return {
-      title: "Update Money Snapshot first",
-      why: "VCC cannot make a clean recommendation until it knows your operating cash.",
-      doFirst: "Enter Cash On Hand, Weekly Income, Food Needed, and Gas Needed.",
-      doNotDo: "Do not make spending decisions from blank numbers.",
-      checkpoint: "After numbers are entered, return to Dashboard and check the new recommendation.",
+      title: "Use available data, then confirm cash",
+      why: "VCC can still recommend a safe next move, but cash confidence is incomplete.",
+      doFirst: "Use the data already entered, then confirm available cash when possible.",
+      doNotDo: "Do not spend freely until cash-on-hand is confirmed.",
+      checkpoint: "After cash-on-hand is confirmed, return to Dashboard for a cleaner safe-to-spend read.",
       source: "money",
       tone: "danger",
     };
