@@ -97,73 +97,14 @@ const defaultSections: Section[] = [
  {
     key: "income",
     label: "Income",
-    subtitle: "Only money actually received counts. Use this page to track weekly and extra income.",
-    columns: ["Source", "Income Type", "Date Received", "Received", "Status", "Notes"],
+    subtitle: "Track money that actually came in. Cash position will be handled separately inside this page.",
+    columns: ["Source", "Income Type", "Date Received", "Amount", "Status", "Notes"],
     rows: [
-      {
-        Source: "Main Paycheck",
-        "Income Type": "Weekly Income",
-        "Date Received": "",
-        Received: "",
-        Status: "Pending",
-        Notes: "Main weekly income. Count only when actually received.",
-      },
-      {
-        Source: "Side Hustle",
-        "Income Type": "Weekly Income",
-        "Date Received": "",
-        Received: "",
-        Status: "Pending",
-        Notes: "Extra weekly income only after received.",
-      },
-      {
-        Source: "Trading Payout",
-        "Income Type": "Other Income",
-        "Date Received": "",
-        Received: "",
-        Status: "Pending",
-        Notes: "Only count after payout is actually received.",
-      },
-      {
-        Source: "Donation / Help",
-        "Income Type": "Other Income",
-        "Date Received": "",
-        Received: "",
-        Status: "Pending",
-        Notes: "Gift or help money.",
-      },
-      {
-        Source: "Borrowed Money",
-        "Income Type": "Borrowed Income",
-        "Date Received": "",
-        Received: "",
-        Status: "Pending",
-        Notes: "Cash received now. Track repayment in Debt.",
-      },
-      {
-        Source: "MyPay",
-        "Income Type": "Borrowed Income",
-        "Date Received": "",
-        Received: "",
-        Status: "Pending",
-        Notes: "Advance or borrowed money. Track repayment in Debt.",
-      },
-      {
-        Source: "SpotMe",
-        "Income Type": "Borrowed Income",
-        "Date Received": "",
-        Received: "",
-        Status: "Pending",
-        Notes: "Cash cushion. Track repayment in Debt.",
-      },
-      {
-        Source: "Cash App Borrow",
-        "Income Type": "Borrowed Income",
-        "Date Received": "",
-        Received: "",
-        Status: "Pending",
-        Notes: "Borrowed cash. Track repayment in Debt.",
-      },
+      { Source: "", "Income Type": "", "Date Received": "", Amount: "", Status: "", Notes: "" },
+      { Source: "", "Income Type": "", "Date Received": "", Amount: "", Status: "", Notes: "" },
+      { Source: "", "Income Type": "", "Date Received": "", Amount: "", Status: "", Notes: "" },
+      { Source: "", "Income Type": "", "Date Received": "", Amount: "", Status: "", Notes: "" },
+      { Source: "", "Income Type": "", "Date Received": "", Amount: "", Status: "", Notes: "" },
     ],
   },  {
     key: "transactions",
@@ -847,7 +788,7 @@ function getMetrics(sections: Section[]): Metrics {
   const receivedIncome = incomeSection.rows.reduce((sum, row) => {
     const status = (row.Status ?? "").toLowerCase();
     if (["cancelled", "canceled", "void", "not received"].includes(status)) return sum;
-    return sum + number(row.Received);
+    return sum + number(row.Amount);
   }, 0);
 
   const transactionNet = transactionsSection.rows.reduce((sum, row) => {
