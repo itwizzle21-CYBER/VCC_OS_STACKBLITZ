@@ -886,11 +886,6 @@ function getAlerts(metrics: Metrics, sections: Section[]): Alert[] {
   const inventory = getSection(sections, "inventory");
   const goals = getSection(sections, "goals");
 
-  const cashConfidenceIncomplete =
-    metrics.cashOnHand === 0 &&
-    metrics.weeklyIncome === 0 &&
-    metrics.otherIncome === 0;
-
   if (metrics.overdueBills > 0) {
     alerts.push({
       title: "Overdue bills need action",
