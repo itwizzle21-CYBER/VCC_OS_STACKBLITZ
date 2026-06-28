@@ -1,0 +1,901 @@
+﻿From 48de5a7b7472125e1af99a52954d73f250be220d Mon Sep 17 00:00:00 2001
+From: itwizzle21-CYBER <292624242+itwizzle21-CYBER@users.noreply.github.com>
+Date: Sat, 27 Jun 2026 23:58:36 -0500
+Subject: [PATCH] Complete VCC OS functional core milestones
+
+---
+ Dashboard.tsx | 593 +++++++++++++++++++++++++++++++++++++++++++-------
+ 1 file changed, 515 insertions(+), 78 deletions(-)
+
+diff --git a/Dashboard.tsx b/Dashboard.tsx
+index 1656ada..88680d1 100644
+--- a/Dashboard.tsx
++++ b/Dashboard.tsx
+@@ -1,4 +1,4 @@
+-import { type KeyboardEvent, useEffect, useMemo, useState } from "react";
++import { type ChangeEvent, type KeyboardEvent, useEffect, useMemo, useState } from "react";
+ 
+ type SectionKey =
+   | "money"
+@@ -42,6 +42,8 @@ type Metrics = {
+   foodNeeded: number;
+   gasNeeded: number;
+   debtPressure: number;
++  totalDebtBalance: number;
++  debtBlocksCash: number;
+   totalPressure: number;
+   spendableCash: number;
+   savingsVault: number;
+@@ -52,7 +54,10 @@ type Metrics = {
+   unpaidBills: number;
+   overdueBills: number;
+   activeDebt: number;
++  borrowedMoney: number;
++  netPosition: number;
+   criticalInventory: number;
++  buyNext: string;
+   openMissions: number;
+   avgGoalProgress: number;
+ };
+@@ -81,17 +86,24 @@ const defaultSections: Section[] = [
+       { Category: "Other Income", Amount: "", Status: "Optional", Priority: "Medium", Notes: "Side money, payout, help, etc." },
+       { Category: "Food Needed", Amount: "", Status: "Needs update", Priority: "Critical", Notes: "Food money needed before next check." },
+       { Category: "Gas Needed", Amount: "", Status: "Needs update", Priority: "Critical", Notes: "Gas money needed before next check." },
++      { Category: "Operating Cash", Amount: "", Status: "Auto", Priority: "High", Notes: "Cash plus income and transaction net." },
++      { Category: "Spendable Cash", Amount: "", Status: "Auto", Priority: "Critical", Notes: "Operating cash minus survival, bills, and debt pressure. Protected savings excluded." },
++      { Category: "Bills Pressure", Amount: "", Status: "Auto", Priority: "High", Notes: "Unpaid, partial, and overdue bill pressure from Bills." },
++      { Category: "Debt Pressure", Amount: "", Status: "Auto", Priority: "High", Notes: "Active debt payments due from Debt." },
++      { Category: "Savings Vault Total", Amount: "", Status: "Auto", Priority: "Medium", Notes: "Total current savings from Savings Vault." },
++      { Category: "Borrowed Money / Advances", Amount: "", Status: "Auto", Priority: "High", Notes: "Active advances and borrowed-money style debt." },
++      { Category: "Net Position", Amount: "", Status: "Auto", Priority: "High", Notes: "Operating cash plus flexible savings minus bills, debt pressure, and advances." },
+     ],
+   },
+   {
+     key: "bills",
+     label: "Bills",
+     subtitle: "Bills due, paid, unpaid, and overdue.",
+-    columns: ["Bill", "Due Date", "Amount", "Status", "Priority", "Notes"],
++    columns: ["Bill", "Due Date", "Amount", "Status", "Priority", "Auto Alert", "Notes"],
+     rows: [
+-      { Bill: "Car note", "Due Date": "", Amount: "", Status: "Unpaid", Priority: "Critical", Notes: "" },
+-      { Bill: "Phone", "Due Date": "", Amount: "", Status: "Unpaid", Priority: "High", Notes: "" },
+-      { Bill: "Insurance", "Due Date": "", Amount: "", Status: "Unpaid", Priority: "High", Notes: "" },
++      { Bill: "Car note", "Due Date": "", Amount: "", Status: "Unpaid", Priority: "Low", "Auto Alert": "Clear", Notes: "" },
++      { Bill: "Phone", "Due Date": "", Amount: "", Status: "Unpaid", Priority: "Low", "Auto Alert": "Clear", Notes: "" },
++      { Bill: "Insurance", "Due Date": "", Amount: "", Status: "Unpaid", Priority: "Low", "Auto Alert": "Clear", Notes: "" },
+     ],
+   },
+  {
+@@ -120,11 +132,11 @@ const defaultSections: Section[] = [
+     key: "debt",
+     label: "Debt",
+     subtitle: "Debt balances and payments eating future cash.",
+-    columns: ["Debt", "Current Balance", "Payment Due", "Due Date", "Status", "Notes"],
++    columns: ["Debt", "Current Balance", "Payment Due", "Due Date", "Status", "Blocks Cash", "Notes"],
+     rows: [
+-      { Debt: "Car balance", "Current Balance": "", "Payment Due": "", "Due Date": "", Status: "Active", Notes: "" },
+-      { Debt: "MyPay", "Current Balance": "", "Payment Due": "", "Due Date": "", Status: "Active", Notes: "" },
+-      { Debt: "SpotMe", "Current Balance": "", "Payment Due": "", "Due Date": "", Status: "Active", Notes: "" },
++      { Debt: "Car balance", "Current Balance": "", "Payment Due": "", "Due Date": "", Status: "Active", "Blocks Cash": "Yes", Notes: "" },
++      { Debt: "MyPay", "Current Balance": "", "Payment Due": "", "Due Date": "", Status: "Active", "Blocks Cash": "Yes", Notes: "" },
++      { Debt: "SpotMe", "Current Balance": "", "Payment Due": "", "Due Date": "", Status: "Active", "Blocks Cash": "Yes", Notes: "" },
+     ],
+   },
+   {
+@@ -249,9 +261,10 @@ export default function Dashboard() {
+         if (section.key !== sectionKey) return section;
+         return {
+           ...section,
+-          rows: section.rows.map((row, index) =>
+-            index === rowIndex ? { ...row, [column]: value } : row
+-          ),
++          rows: section.rows.map((row, index) => {
++            const nextRow = index === rowIndex ? { ...row, [column]: value } : row;
++            return applyDerivedRow(section.key, nextRow);
++          }),
+         };
+       })
+     );
+@@ -267,7 +280,7 @@ export default function Dashboard() {
+           nextRow[column] = "";
+           return nextRow;
+         }, {});
+-        return { ...section, rows: [...section.rows, emptyRow] };
++        return { ...section, rows: [...section.rows, applyDerivedRow(section.key, emptyRow)] };
+       })
+     );
+   }
+@@ -371,6 +384,7 @@ export default function Dashboard() {
+           addRow={addRow}
+           deleteRow={deleteRow}
+           resetSection={resetSection}
++          metrics={metrics}
+           back={() => open("dashboard")}
+         />
+       )}
+@@ -642,6 +656,7 @@ function SectionPage({
+   addRow,
+   deleteRow,
+   resetSection,
++  metrics,
+   back,
+ }: {
+   section: Section;
+@@ -649,6 +664,7 @@ function SectionPage({
+   addRow: (sectionKey: SectionKey) => void;
+   deleteRow: (sectionKey: SectionKey, rowIndex: number) => void;
+   resetSection: (sectionKey: SectionKey) => void;
++  metrics: Metrics;
+   back: () => void;
+ }) {
+   return (
+@@ -660,22 +676,26 @@ function SectionPage({
+         <button className="primary" onClick={() => addRow(section.key)}>+ ADD ROW</button>
+       </div>
+ 
+-      <SpreadsheetGrid section={section} updateCell={updateCell} deleteRow={deleteRow} />
++      <SpreadsheetGrid section={section} metrics={metrics} updateCell={updateCell} deleteRow={deleteRow} />
+     </section>
+   );
+ }
+ 
+ function SpreadsheetGrid({
+   section,
++  metrics,
+   updateCell,
+   deleteRow,
+ }: {
+   section: Section;
++  metrics: Metrics;
+   updateCell: (sectionKey: SectionKey, rowIndex: number, column: string, value: string) => void;
+   deleteRow: (sectionKey: SectionKey, rowIndex: number) => void;
+ }) {
++  const displayRows = section.rows.map((row) => getDisplayRow(section.key, row, metrics));
++
+   function handleCellKeyDown(
+-    event: KeyboardEvent<HTMLInputElement>,
++    event: KeyboardEvent<HTMLInputElement | HTMLSelectElement>,
+     rowIndex: number,
+     columnIndex: number
+   ) {
+@@ -711,50 +731,29 @@ function SpreadsheetGrid({
+         </thead>
+ 
+         <tbody>
+-          {section.rows.map((row, rowIndex) => (
++          {displayRows.map((row, rowIndex) => (
+             <tr key={`${section.key}-${rowIndex}`}>
+               {section.columns.map((column, columnIndex) => (
+                 <td
+                   key={column}
+                   className="spreadsheetCell"
+                   onMouseDown={(event) => {
+-                    const input = event.currentTarget.querySelector("input");
+-                    if (input && event.target !== input) {
++                    const field = event.currentTarget.querySelector("input, select");
++                    if (field instanceof HTMLElement && event.target !== field) {
+                       event.preventDefault();
+-                      input.focus();
+-                      input.select();
++                      field.focus();
++                      if (field instanceof HTMLInputElement) field.select();
+                     }
+                   }}
+                 >
+-                  <input
+-                    className="spreadsheetInput"
+-                    type={section.key === "income" && column === "Date Received" ? "date" : "text"}
+-                    value={row[column] ?? ""}
+-                    inputMode={isCurrencyColumn(column) ? "decimal" : undefined}
+-                    onChange={(event) => updateCell(section.key, rowIndex, column, event.target.value)}
+-                    onBlur={(event) => {
+-                      if (isCurrencyColumn(column)) {
+-                        updateCell(section.key, rowIndex, column, formatCurrencyCellValue(event.target.value));
+-                      }
+-                    }}
+-                    onKeyDown={(event) => {
+-                      if (event.key === "Enter" && isCurrencyColumn(column)) {
+-                        updateCell(
+-                          section.key,
+-                          rowIndex,
+-                          column,
+-                          formatCurrencyCellValue(event.currentTarget.value)
+-                        );
+-                      }
+-
+-                      handleCellKeyDown(event, rowIndex, columnIndex);
+-                    }}
+-                    data-section={section.key}
+-                    data-row={rowIndex}
+-                    data-column={column}
+-                    data-column-index={columnIndex}
+-                    data-cell-kind={isCurrencyColumn(column) ? "currency" : "text"}
+-                    aria-label={`${section.label} row ${rowIndex + 1} ${column}`}
++                  <SpreadsheetField
++                    section={section}
++                    row={row}
++                    rowIndex={rowIndex}
++                    column={column}
++                    columnIndex={columnIndex}
++                    updateCell={updateCell}
++                    onKeyDown={handleCellKeyDown}
+                   />
+                 </td>
+               ))}
+@@ -769,6 +768,79 @@ function SpreadsheetGrid({
+   );
+ }
+ 
++function SpreadsheetField({
++  section,
++  row,
++  rowIndex,
++  column,
++  columnIndex,
++  updateCell,
++  onKeyDown,
++}: {
++  section: Section;
++  row: Row;
++  rowIndex: number;
++  column: string;
++  columnIndex: number;
++  updateCell: (sectionKey: SectionKey, rowIndex: number, column: string, value: string) => void;
++  onKeyDown: (
++    event: KeyboardEvent<HTMLInputElement | HTMLSelectElement>,
++    rowIndex: number,
++    columnIndex: number
++  ) => void;
++}) {
++  const value = row[column] ?? "";
++  const readOnly = isReadOnlyCell(section.key, row, column);
++  const options = getSelectOptions(section.key, column);
++  const commonProps = {
++    className: `spreadsheetInput ${readOnly ? "readOnly" : ""}`,
++    value,
++    onKeyDown: (event: KeyboardEvent<HTMLInputElement | HTMLSelectElement>) => {
++      if (!readOnly && event.key === "Enter" && isCurrencyColumn(column)) {
++        updateCell(section.key, rowIndex, column, formatCurrencyCellValue(event.currentTarget.value));
++      }
++
++      onKeyDown(event, rowIndex, columnIndex);
++    },
++    "data-section": section.key,
++    "data-row": rowIndex,
++    "data-column": column,
++    "data-column-index": columnIndex,
++    "data-cell-kind": isCurrencyColumn(column) ? "currency" : isDateColumn(column) ? "date" : options ? "select" : "text",
++    "aria-label": `${section.label} row ${rowIndex + 1} ${column}`,
++  };
++
++  if (options) {
++    return (
++      <select
++        {...commonProps}
++        disabled={readOnly}
++        onChange={(event: ChangeEvent<HTMLSelectElement>) => updateCell(section.key, rowIndex, column, event.target.value)}
++      >
++        <option value=""></option>
++        {options.map((option) => (
++          <option key={option} value={option}>{option}</option>
++        ))}
++      </select>
++    );
++  }
++
++  return (
++    <input
++      {...commonProps}
++      type={isDateColumn(column) ? "date" : "text"}
++      inputMode={isCurrencyColumn(column) ? "decimal" : undefined}
++      readOnly={readOnly}
++      onChange={(event) => updateCell(section.key, rowIndex, column, event.target.value)}
++      onBlur={(event) => {
++        if (isCurrencyColumn(column)) {
++          updateCell(section.key, rowIndex, column, formatCurrencyCellValue(event.target.value));
++        }
++      }}
++    />
++  );
++}
++
+ function PageHeader({ title, subtitle, back }: { title: string; subtitle: string; back: () => void }) {
+   return (
+     <div className="pageHeader">
+@@ -792,29 +864,50 @@ function getMetrics(sections: Section[]): Metrics {
+   const missionsSection = getSection(sections, "missions");
+ 
+   const cashOnHand = moneyAmount(moneySection, "Cash On Hand");
+-  const weeklyIncome = 0;
+-  const otherIncome = moneyAmount(moneySection, "Other Income");
++  const weeklyIncomeFromSnapshot = moneyAmount(moneySection, "Weekly Income");
++  const otherIncomeFromSnapshot = moneyAmount(moneySection, "Other Income");
+   const foodNeeded = moneyAmount(moneySection, "Food Needed");
+   const gasNeeded = moneyAmount(moneySection, "Gas Needed");
+ 
+-  const receivedIncome = incomeSection.rows.reduce((sum, row) => {
++  const weeklyIncomeFromRows = incomeSection.rows.reduce((sum, row) => {
+     const status = (row.Status ?? "").toLowerCase();
+     if (["cancelled", "canceled", "void", "not received"].includes(status)) return sum;
++    const type = `${row["Income Type"] ?? ""} ${row.Source ?? ""}`.toLowerCase();
++    if (!/(weekly|paycheck|job|wage|salary)/.test(type)) return sum;
+     return sum + number(row.Amount);
+   }, 0);
+ 
++  const otherIncomeFromRows = incomeSection.rows.reduce((sum, row) => {
++    const status = (row.Status ?? "").toLowerCase();
++    if (["cancelled", "canceled", "void", "not received"].includes(status)) return sum;
++    const type = `${row["Income Type"] ?? ""} ${row.Source ?? ""}`.toLowerCase();
++    if (/(weekly|paycheck|job|wage|salary)/.test(type)) return sum;
++    return sum + number(row.Amount);
++  }, 0);
++
++  const weeklyIncome = weeklyIncomeFromSnapshot + weeklyIncomeFromRows;
++  const otherIncome = otherIncomeFromSnapshot + otherIncomeFromRows;
++
+   const transactionNet = transactionsSection.rows.reduce((sum, row) => {
+     const amount = number(row.Amount);
+     const type = (row.Type ?? "").toLowerCase();
+     return type === "income" || type === "deposit" ? sum + amount : sum - amount;
+   }, 0);
+ 
+-  const unpaidBills = billsSection.rows.filter((row) => !isPaid(row.Status));
++  const normalizedBills = billsSection.rows.map((row) => applyDerivedRow("bills", row));
++  const unpaidBills = normalizedBills.filter((row) => !isPaid(row.Status));
+   const billsPressure = unpaidBills.reduce((sum, row) => sum + number(row.Amount), 0);
+   const overdueBills = unpaidBills.filter((row) => isOverdue(row["Due Date"]) || (row.Status ?? "").toLowerCase() === "overdue").length;
+ 
+   const activeDebtRows = debtSection.rows.filter((row) => !["paid", "closed", "done"].includes((row.Status ?? "").toLowerCase()));
++  const totalDebtBalance = activeDebtRows.reduce((sum, row) => sum + number(row["Current Balance"]), 0);
+   const debtPressure = activeDebtRows.reduce((sum, row) => sum + number(row["Payment Due"]), 0);
++  const debtBlocksCash = activeDebtRows
++    .filter((row) => (row["Blocks Cash"] ?? "").toLowerCase() === "yes")
++    .reduce((sum, row) => sum + number(row["Payment Due"]), 0);
++  const borrowedMoney = activeDebtRows
++    .filter((row) => /(advance|borrow|mypay|spotme|loan|payday)/i.test(`${row.Debt ?? ""} ${row.Notes ?? ""}`))
++    .reduce((sum, row) => sum + number(row["Current Balance"]) + number(row["Payment Due"]), 0);
+ 
+   let savingsVault = 0;
+   let protectedSavings = 0;
+@@ -837,16 +930,18 @@ function getMetrics(sections: Section[]): Metrics {
+     }
+   });
+ 
+-  const operatingCash = cashOnHand + weeklyIncome + otherIncome + receivedIncome + transactionNet;
++  const operatingCash = cashOnHand + weeklyIncome + otherIncome + transactionNet;
+   const totalPressure = billsPressure + foodNeeded + gasNeeded + debtPressure;
+   const spendableCash = operatingCash - totalPressure;
+   const lockedSavings = Math.max(savingsVault - allowedWithdrawal, 0);
+ 
+-  const criticalInventory = inventorySection.rows.filter((row) => {
++  const openInventory = inventorySection.rows.filter((row) => {
+     const urgency = (row.Urgency ?? "").toLowerCase();
+     const status = (row.Status ?? "").toLowerCase();
+     return ["critical", "high"].includes(urgency) && !["done", "handled", "bought"].includes(status);
+-  }).length;
++  });
++  const criticalInventory = openInventory.length;
++  const buyNext = chooseBuyNext(openInventory, spendableCash);
+ 
+   const openMissions = missionsSection.rows.filter((row) => !["done", "closed", "complete"].includes((row.Status ?? "").toLowerCase())).length;
+ 
+@@ -865,6 +960,8 @@ function getMetrics(sections: Section[]): Metrics {
+     foodNeeded,
+     gasNeeded,
+     debtPressure,
++    totalDebtBalance,
++    debtBlocksCash,
+     totalPressure,
+     spendableCash,
+     savingsVault,
+@@ -875,7 +972,10 @@ function getMetrics(sections: Section[]): Metrics {
+     unpaidBills: unpaidBills.length,
+     overdueBills,
+     activeDebt: activeDebtRows.length,
++    borrowedMoney,
++    netPosition: operatingCash + flexibleSavings + allowedWithdrawal - billsPressure - debtPressure - borrowedMoney,
+     criticalInventory,
++    buyNext,
+     openMissions,
+     avgGoalProgress,
+   };
+@@ -883,18 +983,23 @@ function getMetrics(sections: Section[]): Metrics {
+ 
+ function getAlerts(metrics: Metrics, sections: Section[]): Alert[] {
+   const alerts: Alert[] = [];
++  const bills = getSection(sections, "bills");
+   const inventory = getSection(sections, "inventory");
+   const goals = getSection(sections, "goals");
+ 
+-  if (metrics.overdueBills > 0) {
++  const criticalBills = bills.rows
++    .map((row) => applyDerivedRow("bills", row))
++    .filter((row) => row.Priority === "Critical" && !isPaid(row.Status));
++
++  criticalBills.forEach((row) => {
+     alerts.push({
+-      title: "Overdue bills need action",
++      title: `${row.Bill || "Bill"} needs bill action`,
+       source: "bills",
+       level: "Critical",
+-      proof: `${metrics.overdueBills} bill(s) are overdue or past due.`,
+-      action: "Handle overdue bills before wants or low-priority spending.",
++      proof: `${row.Bill || "Bill"} is ${row["Auto Alert"] || row.Status || "critical"} for ${money(number(row.Amount))}.`,
++      action: "Pay, negotiate, or mark the bill with the true status today.",
+     });
+-  }
++  });
+ 
+   if (metrics.unpaidBills > 0) {
+     alerts.push({
+@@ -910,12 +1015,22 @@ function getAlerts(metrics: Metrics, sections: Section[]): Alert[] {
+     alerts.push({
+       title: "Active debt is eating future cash",
+       source: "debt",
+-      level: "High",
+-      proof: `${metrics.activeDebt} active debt item(s). Payment pressure: ${money(metrics.debtPressure)}.`,
++      level: metrics.debtBlocksCash > 0 ? "Critical" : "High",
++      proof: `${metrics.activeDebt} active debt item(s). Payment pressure: ${money(metrics.debtPressure)}. Current balance: ${money(metrics.totalDebtBalance)}.`,
+       action: "Update balances and attack the debt that blocks the next check.",
+     });
+   }
+ 
++  if (metrics.borrowedMoney > 0) {
++    alerts.push({
++      title: "Borrowed money is reducing safety",
++      source: "debt",
++      level: "High",
++      proof: `Advances or borrowed-money rows total ${money(metrics.borrowedMoney)}.`,
++      action: "Treat advances as pressure before calling cash safe.",
++    });
++  }
++
+   if (metrics.savingsVault <= 0) {
+     alerts.push({
+       title: "No savings buffer yet",
+@@ -934,8 +1049,10 @@ function getAlerts(metrics: Metrics, sections: Section[]): Alert[] {
+         title: `${row.Item || "Inventory item"} needs attention`,
+         source: "inventory",
+         level: urgency === "critical" ? "Critical" : "High",
+-        proof: `${row.Item || "Item"} is marked ${row.Urgency || "urgent"}.`,
+-        action: "Handle or update this before it becomes a bigger problem.",
++        proof: `${row.Item || "Item"} is marked ${row.Urgency || "urgent"} in ${row.Category || "inventory"}.`,
++        action: metrics.buyNext === (row.Item || "Inventory item")
++          ? "Buy Next: handle this first if spendable cash allows it."
++          : "Handle or update this before it becomes a bigger problem.",
+       });
+     }
+   });
+@@ -960,9 +1077,9 @@ function getAlerts(metrics: Metrics, sections: Section[]): Alert[] {
+ function getRecommendedMove(metrics: Metrics, alerts: Alert[]): RecommendedMove {
+   if (metrics.cashOnHand === 0 && metrics.weeklyIncome === 0 && metrics.otherIncome === 0) {
+     return {
+-      title: "Use available data, then confirm cash",
+-      why: "VCC can still recommend a safe next move, but cash confidence is incomplete.",
+-      doFirst: "Use the data already entered, then confirm available cash when possible.",
++      title: "Enter cash before spending",
++      why: "Cash data is incomplete, so VCC cannot safely prove what is spendable.",
++      doFirst: "Open Money Snapshot and enter Cash On Hand plus expected income.",
+       doNotDo: "Do not spend freely until cash-on-hand is confirmed.",
+       checkpoint: "After cash-on-hand is confirmed, return to Dashboard for a cleaner safe-to-spend read.",
+       source: "money",
+@@ -970,10 +1087,34 @@ function getRecommendedMove(metrics: Metrics, alerts: Alert[]): RecommendedMove
+     };
+   }
+ 
+-  if (metrics.overdueBills > 0) {
++  if (metrics.criticalInventory > 0 && /(food|gas|hygiene|car|home|shelter|transport)/i.test(metrics.buyNext)) {
++    return {
++      title: `Buy next: ${metrics.buyNext}`,
++      why: `${metrics.buyNext} is the highest survival/income-protection inventory need. Survival comes before Thrive.`,
++      doFirst: "Open Inventory, confirm the needed amount, then cover it from spendable cash if possible.",
++      doNotDo: "Do not spend on wants while a survival or transportation item is marked urgent.",
++      checkpoint: "Update Inventory status after the item is handled.",
++      source: "inventory",
++      tone: "danger",
++    };
++  }
++
++  if (metrics.debtBlocksCash > 0 && metrics.spendableCash >= 0) {
++    return {
++      title: "Protect the next check from debt",
++      why: `${money(metrics.debtBlocksCash)} in active debt payments is marked as blocking future cash.`,
++      doFirst: "Open Debt and handle the payment or advance that protects the next paycheck.",
++      doNotDo: "Do not count advances as safe money until their payback is covered.",
++      checkpoint: "Update Debt status and payment due after action is taken.",
++      source: "debt",
++      tone: "warning",
++    };
++  }
++
++  if (metrics.overdueBills > 0 && metrics.criticalInventory === 0) {
+     return {
+       title: "Handle overdue bills first",
+-      why: `${metrics.overdueBills} bill(s) are overdue or past due. That can create bigger damage fast.`,
++      why: `${metrics.overdueBills} bill(s) are overdue or past due, and no higher survival inventory blocker is currently marked.`,
+       doFirst: "Open Bills and decide what must be paid, delayed, or negotiated today.",
+       doNotDo: "Do not spend on wants or pull savings without a survival reason.",
+       checkpoint: "Update bill statuses after action is taken.",
+@@ -1020,7 +1161,7 @@ function getRecommendedMove(metrics: Metrics, alerts: Alert[]): RecommendedMove
+ 
+   if (metrics.criticalInventory > 0) {
+     return {
+-      title: "Handle survival inventory",
++      title: `Buy next: ${metrics.buyNext || "survival inventory"}`,
+       why: `${metrics.criticalInventory} inventory item(s) are critical or high urgency.`,
+       doFirst: "Open Inventory and handle food, gas, hygiene, car, or home needs first.",
+       doNotDo: "Do not ignore small survival items until they become emergencies.",
+@@ -1096,8 +1237,8 @@ function cardFor(key: SectionKey, metrics: Metrics, alerts: Alert[]) {
+     case "income":
+       return {
+         value: money(metrics.weeklyIncome + metrics.otherIncome),
+-        label: "Snapshot income",
+-        detail: "Job check + other income",
++        label: "Live income",
++        detail: `Weekly ${money(metrics.weeklyIncome)} plus other ${money(metrics.otherIncome)}`,
+         tone: "good",
+       };
+     case "transactions":
+@@ -1111,7 +1252,7 @@ function cardFor(key: SectionKey, metrics: Metrics, alerts: Alert[]) {
+       return {
+         value: money(metrics.debtPressure),
+         label: "Debt payment pressure",
+-        detail: `${metrics.activeDebt} active debts`,
++        detail: `${metrics.activeDebt} active debts. Balance ${money(metrics.totalDebtBalance)}`,
+         tone: metrics.activeDebt > 0 ? "bad" : "good",
+       };
+     case "savings":
+@@ -1125,7 +1266,7 @@ function cardFor(key: SectionKey, metrics: Metrics, alerts: Alert[]) {
+       return {
+         value: String(metrics.criticalInventory),
+         label: "Critical items",
+-        detail: "Food, gas, home, car",
++        detail: metrics.buyNext ? `Buy next: ${metrics.buyNext}` : "Food, gas, home, car",
+         tone: metrics.criticalInventory > 0 ? "warn" : "good",
+       };
+     case "goals":
+@@ -1166,7 +1307,9 @@ function loadSections() {
+ 
+       return {
+         ...defaultSection,
+-        rows: Array.isArray(savedSection.rows) ? savedSection.rows : defaultSection.rows,
++        rows: Array.isArray(savedSection.rows)
++          ? mergeSavedRows(defaultSection, savedSection.rows)
++          : defaultSection.rows.map((row) => applyDerivedRow(defaultSection.key, row)),
+       };
+     });
+   } catch {
+@@ -1174,6 +1317,39 @@ function loadSections() {
+   }
+ }
+ 
++function mergeSavedRows(defaultSection: Section, savedRows: Row[]) {
++  const normalized = savedRows.map((row) => normalizeRow(defaultSection, row));
++  const identityColumn = getIdentityColumn(defaultSection.key);
++
++  if (!identityColumn) return normalized;
++
++  const savedIdentities = new Set(
++    normalized
++      .map((row) => row[identityColumn])
++      .filter(Boolean)
++  );
++  const missingDefaults = defaultSection.rows
++    .filter((row) => row[identityColumn] && !savedIdentities.has(row[identityColumn]))
++    .map((row) => normalizeRow(defaultSection, row));
++
++  return [...normalized, ...missingDefaults];
++}
++
++function normalizeRow(section: Section, row: Row) {
++  const normalized = section.columns.reduce<Row>((nextRow, column) => {
++    nextRow[column] = row[column] ?? "";
++    return nextRow;
++  }, {});
++
++  return applyDerivedRow(section.key, normalized);
++}
++
++function getIdentityColumn(sectionKey: SectionKey) {
++  if (sectionKey === "money") return "Category";
++  if (sectionKey === "savings") return "Goal";
++  return "";
++}
++
+ function getSection(sections: Section[], key: SectionKey) {
+   return sections.find((section) => section.key === key) ?? defaultSections.find((section) => section.key === key)!;
+ }
+@@ -1236,6 +1412,145 @@ function labelFor(key: SectionKey) {
+   return labels[key];
+ }
+ 
++function applyDerivedRow(sectionKey: SectionKey, row: Row) {
++  if (sectionKey !== "bills") return row;
++
++  return {
++    ...row,
++    Priority: getBillPriority(row),
++    "Auto Alert": getBillAutoAlert(row),
++  };
++}
++
++function getDisplayRow(sectionKey: SectionKey, row: Row, metrics: Metrics) {
++  const derivedRow = applyDerivedRow(sectionKey, row);
++  if (sectionKey !== "money") return derivedRow;
++
++  const amountByCategory: Record<string, number> = {
++    "Operating Cash": metrics.operatingCash,
++    "Spendable Cash": metrics.spendableCash,
++    "Bills Pressure": metrics.billsPressure,
++    "Debt Pressure": metrics.debtPressure,
++    "Savings Vault Total": metrics.savingsVault,
++    "Borrowed Money / Advances": metrics.borrowedMoney,
++    "Net Position": metrics.netPosition,
++  };
++
++  const category = derivedRow.Category ?? "";
++  if (!(category in amountByCategory)) return derivedRow;
++
++  return {
++    ...derivedRow,
++    Amount: money(amountByCategory[category]),
++    Status: amountByCategory[category] < 0 ? "Pressure" : "Auto",
++    Priority: amountByCategory[category] < 0 || category.includes("Pressure") ? "High" : "Medium",
++  };
++}
++
++function getBillPriority(row: Row) {
++  const status = (row.Status ?? "").toLowerCase();
++  const dueIn = daysUntil(row["Due Date"]);
++
++  if (status === "paid") return "Paid";
++  if (status === "partial") return "High";
++  if (status === "overdue" || isOverdue(row["Due Date"])) return "Critical";
++  if (dueIn !== null && dueIn <= 3) return "High";
++  if (dueIn !== null && dueIn <= 7) return "Medium";
++  return "Low";
++}
++
++function getBillAutoAlert(row: Row) {
++  const status = (row.Status ?? "").toLowerCase();
++  const dueIn = daysUntil(row["Due Date"]);
++
++  if (status === "paid") return "Paid";
++  if (status === "partial") return "Partial";
++  if (status === "overdue" || isOverdue(row["Due Date"])) return "Overdue";
++  if (dueIn !== null && dueIn <= 3) return "Due Soon";
++  return "Clear";
++}
++
++function isReadOnlyCell(sectionKey: SectionKey, row: Row, column: string) {
++  if (sectionKey === "bills" && ["Priority", "Auto Alert"].includes(column)) return true;
++  if (sectionKey === "money" && isCalculatedMoneyCategory(row.Category) && ["Amount", "Status", "Priority"].includes(column)) return true;
++  return false;
++}
++
++function isCalculatedMoneyCategory(category: string | undefined) {
++  return [
++    "Operating Cash",
++    "Spendable Cash",
++    "Bills Pressure",
++    "Debt Pressure",
++    "Savings Vault Total",
++    "Borrowed Money / Advances",
++    "Net Position",
++  ].includes(category ?? "");
++}
++
++function getSelectOptions(sectionKey: SectionKey, column: string) {
++  if (sectionKey === "bills" && column === "Status") return ["Unpaid", "Paid", "Partial", "Overdue"];
++  if (column === "Status") return ["", "Open", "Active", "Needed", "Watch", "Locked", "Allowed", "Approved", "Paid", "Done", "Closed", "Handled", "Bought"];
++  if (column === "Priority") return ["", "Critical", "High", "Medium", "Low"];
++  if (column === "Type") return ["", "Expense", "Income", "Deposit", "Transfer"];
++  if (column === "Income Type") return ["", "Weekly", "Paycheck", "Job", "Other", "Side", "Gift"];
++  if (column === "Protected") return ["", "Yes", "No", "Flexible"];
++  if (column === "Blocks Cash") return ["", "Yes", "No"];
++  if (column === "Urgency") return ["", "Critical", "High", "Medium", "Low"];
++  if (column === "Current Level") return ["", "Empty", "Low", "Okay", "Full"];
++  if (column === "Category" && sectionKey === "inventory") return ["", "Food", "Gas", "Hygiene", "Car", "Home", "Shelter", "Work", "Other"];
++  return null;
++}
++
++function isDateColumn(column: string) {
++  return column === "Date" || column === "Due Date" || column === "Date Received";
++}
++
++function daysUntil(date: string | undefined) {
++  if (!date) return null;
++  const dueDate = new Date(`${date}T23:59:59`);
++  if (Number.isNaN(dueDate.getTime())) return null;
++  const todayStart = new Date();
++  todayStart.setHours(0, 0, 0, 0);
++  const dueStart = new Date(dueDate);
++  dueStart.setHours(0, 0, 0, 0);
++  return Math.ceil((dueStart.getTime() - todayStart.getTime()) / 86_400_000);
++}
++
++function chooseBuyNext(rows: Row[], spendableCash: number) {
++  if (rows.length === 0) return "";
++
++  const categoryWeight: Record<string, number> = {
++    food: 10,
++    gas: 9,
++    car: 9,
++    transportation: 9,
++    shelter: 8,
++    home: 7,
++    hygiene: 7,
++    work: 7,
++  };
++  const urgencyWeight: Record<string, number> = {
++    critical: 20,
++    high: 12,
++    medium: 6,
++    low: 1,
++  };
++
++  const ranked = [...rows].sort((a, b) => {
++    const aCategory = (a.Category ?? "").toLowerCase();
++    const bCategory = (b.Category ?? "").toLowerCase();
++    const aNeed = number(a.Needed);
++    const bNeed = number(b.Needed);
++    const aAffordable = aNeed === 0 || aNeed <= spendableCash ? 3 : 0;
++    const bAffordable = bNeed === 0 || bNeed <= spendableCash ? 3 : 0;
++    const aScore = (urgencyWeight[(a.Urgency ?? "").toLowerCase()] ?? 0) + (categoryWeight[aCategory] ?? 0) + aAffordable;
++    const bScore = (urgencyWeight[(b.Urgency ?? "").toLowerCase()] ?? 0) + (categoryWeight[bCategory] ?? 0) + bAffordable;
++    return bScore - aScore;
++  });
++
++  return ranked[0]?.Item || "Inventory item";
++}
+ 
+ const CURRENCY_COLUMNS = new Set([
+   "Amount",
+@@ -1276,7 +1591,7 @@ function focusSpreadsheetCell(sectionKey: SectionKey, rowIndex: number, columnIn
+   if (rowIndex < 0 || columnIndex < 0) return;
+ 
+   const cells = Array.from(
+-    document.querySelectorAll<HTMLInputElement>(`input[data-section="${sectionKey}"]`)
++    document.querySelectorAll<HTMLInputElement | HTMLSelectElement>(`input[data-section="${sectionKey}"], select[data-section="${sectionKey}"]`)
+   );
+   const nextCell = cells.find(
+     (cell) => cell.dataset.row === String(rowIndex) && cell.dataset.columnIndex === String(columnIndex)
+@@ -1285,7 +1600,7 @@ function focusSpreadsheetCell(sectionKey: SectionKey, rowIndex: number, columnIn
+   if (!nextCell) return;
+ 
+   nextCell.focus();
+-  nextCell.select();
++  if (nextCell instanceof HTMLInputElement) nextCell.select();
+ }
+ 
+ const styles = `
+@@ -2420,4 +2735,126 @@ th {
+   }
+ }
+ 
++/* ===== RESPONSIVE FOUNDATION PATCH ===== */
++
++html,
++body,
++#root,
++.vcc {
++  width: 100%;
++  max-width: 100%;
++  overflow-x: hidden;
++}
++
++button,
++input,
++select {
++  min-height: 44px;
++}
++
++button,
++.proofCard,
++.card,
++.alert,
++.stackItem,
++.movePanel,
++td,
++th {
++  overflow-wrap: anywhere;
++}
++
++.hero,
++.pageHeader,
++.empty,
++.stack,
++.alert,
++.movePanel,
++.settingsCard,
++.dangerZone,
++.proofCard,
++.card {
++  max-width: 100%;
++}
++
++.spreadsheetWrap {
++  max-width: 100%;
++  overscroll-behavior-x: contain;
++}
++
++.spreadsheetInput {
++  white-space: normal;
++  text-overflow: clip;
++}
++
++select.spreadsheetInput {
++  appearance: auto;
++  cursor: pointer;
++  color-scheme: dark;
++}
++
++.spreadsheetInput.readOnly,
++.spreadsheetInput:disabled {
++  color: #cbd5e1;
++  background: rgba(30, 41, 59, 0.58);
++  cursor: default;
++  opacity: 1;
++}
++
++@media (min-width: 761px) {
++  .hero {
++    align-items: flex-start;
++  }
++}
++
++@media (max-width: 980px) {
++  .proof {
++    grid-template-columns: repeat(2, minmax(0, 1fr));
++  }
++
++  .cards,
++  .settingsGrid {
++    grid-template-columns: repeat(2, minmax(0, 1fr));
++  }
++}
++
++@media (max-width: 760px) {
++  .statusline,
++  .moveTop span,
++  .stackHead span,
++  .primary,
++  .secondary,
++  .back,
++  .delete {
++    letter-spacing: 1px;
++  }
++
++  .proof,
++  .cards,
++  .settingsGrid {
++    grid-template-columns: 1fr;
++  }
++
++  .heroText,
++  .pageHeader > p:last-child,
++  .moveGrid h3,
++  .card small,
++  .alert span {
++    font-size: 14px;
++  }
++
++  .spreadsheetGrid {
++    min-width: 760px;
++  }
++
++  .rowActionCell,
++  .actionHead {
++    width: 92px;
++  }
++
++  .rowActionCell .delete {
++    font-size: 10px;
++    padding: 0 6px;
++  }
++}
++
+ `;
+-- 
+2.54.0.windows.1
+
