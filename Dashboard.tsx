@@ -3087,4 +3087,28 @@ th {
   }
 }
 
+/* ===== FROZEN HOME LOGO ===== */
+
+.logoOnly {
+  position: fixed;
+  top: 12px;
+  left: 22px;
+  z-index: 80;
+}
+
+.topbar {
+  padding-left: 86px;
+}
+
+@media (max-width: 760px) {
+  .logoOnly {
+    top: 10px;
+    left: 14px;
+  }
+
+  .topbar {
+    padding-left: 66px;
+  }
+}
+
 `;
